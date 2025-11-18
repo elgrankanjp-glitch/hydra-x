@@ -1,0 +1,649 @@
+name: Bootstrap HYDRA-X OmniCapital
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/blank.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scaffold repository
+        run: |
+          set -e
+          mkdir -p seeds templates .github/workflows public/static
+
+          # ---------------- config ----------------
+          cat > config.yaml << 'EOF'
+          site:
+            name: HYDRA-X OmniCapital
+            languages: [es, en]
+            posts_per_run: 12
+            paypal_link: "https://paypal.me/nostrodamus777"
+            iban: "ES15830001149095288889"
+            base_url: "https://elgrankanjp-glitch.github.io/hydra-x"
+            disclaimer: "Contenido informativo. Verifica datos clave. Puede haber enlaces de afiliado."
+          distribution:
+            telegram:
+              enabled: false
+              token_env: "TELEGRAM_BOT_TOKEN"
+              chat_id_env: "TELEGRAM_CHAT_ID"
+          llm:
+            enabled_env: "LLM_ENABLED"        # pon 1 en Secrets si quieres TinyLlama en CI
+            provider: "llama-cpp"
+            repo_id: "TinyLlama/TinyLlama-1.1B-Chat-v1.0-GGUF"
+            filename: "TinyLlama-1.1B-Chat-v1.0-q4_k_m.gguf"
+          monetization:
+            amounts: [5, 15, 49, 99]          # botones rápidos de pago en /pay
+          marketing:
+            indexnow_enabled: true
+            pingomatic_enabled: true
+            websub_enabled: true
+          EOF
+
+          # ---------------- afiliados ----------------
+          cat > affiliates.yaml << 'EOF'
+          - name: "Curso práctico de IA"
+            url: "https://example.com/curso?ref=hydra"
+            tags: ["ia","productividad"]
+          - name: "Hosting optimizado"
+            url: "https://affiliate.example/hosting"
+            tags: ["hosting","web"]
+          EOF
+
+          # ---------------- feeds (curación) ----------------
+          cat > feeds.yaml << 'EOF'
+          es:
+            - "https://export.arxiv.org/rss/cs.AI"
+            - "https://www.xataka.com/tag/ia/rss2.xml"
+            - "https://www.genbeta.com/rss"
+          en:
+            - "https://export.arxiv.org/rss/cs.AI"
+            - "https://www.theverge.com/rss/index.xml"
+            - "https://hnrss.org/frontpage"
+          EOF
+
+          # ---------------- seeds ----------------
+          cat > seeds/es.txt << 'EOF'
+          automatización con ia para restaurantes
+          micro saas de facturación
+          mejores prompts para productividad personal
+          embudos de ventas sin anuncios
+          seo programático para nichos
+          chatbots de atención al cliente open source
+          scrapers éticos y legales
+          monetización con afiliación en 2025
+          plantillas para captación de leads b2b
+          email marketing sin spam
+          comparativa herramientas open source de ia
+          guía de prompts para ventas b2b
+          automatizar procesos con n8n
+          landing pages de alta conversión
+          productos digitales de bajo esfuerzo
+          newsletter de curación de contenidos
+          modelos de negocio sin inventario
+          cómo crear datasets útiles
+          licenciamiento de contenido embebible
+          ideas de micro saas 2025
+          automatización para ecommerce
+          agentes autónomos para pymes
+          marketing de contenidos con ia
+          estrategias de referidos éticas
+          integraciones con zapier y make
+          EOF
+
+          cat > seeds/en.txt << 'EOF'
+          ai automation for small businesses
+          micro saas billing ideas
+          best prompts for productivity
+          zero ad growth loops
+          programmatic seo for long tail
+          open source customer support chatbots
+          ethical scraping and compliance
+          affiliate monetization in 2025
+          b2b lead capture playbooks
+          email marketing compliance basics
+          open source ai tools comparison
+          sales prompts for b2b
+          process automation with n8n
+          high converting landing pages
+          low effort digital products
+          newsletter curation strategy
+          inventory free business models
+          how to create useful datasets
+          embeddable content licensing
+          micro saas ideas 2025
+          automation for ecommerce
+          autonomous agents for smbs
+          content marketing with ai
+          ethical referral strategies
+          zapier and make integrations
+          EOF
+
+          # ---------------- templates ----------------
+          cat > templates/base.html << 'EOF'
+          <!doctype html>
+          <html lang="es">
+          <head>
+            <meta charset="utf-8"/>
+            <meta name="viewport" content="width=device-width,initial-scale=1"/>
+            <title>{{ title if title else site.name }}</title>
+            <link rel="stylesheet" href="{{ prefix }}static/styles.css"/>
+            {% if og_image %}<meta property="og:image" content="{{ og_image }}"/>{% endif %}
+            <meta property="og:title" content="{{ title if title else site.name }}"/>
+            <meta name="robots" content="index,follow"/>
+            <link rel="alternate" type="application/rss+xml" href="{{ prefix }}feed.xml"/>
+            <link rel="sitemap" type="application/xml" href="{{ prefix }}sitemap.xml"/>
+          </head>
+          <body>
+          <header>
+            <div style="max-width:960px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;">
+              <strong>{{ site.name }}</strong>
+              <nav style="display:flex;gap:12px">
+                <a href="{{ prefix }}">Inicio</a>
+                <a href="{{ prefix }}pay/">Pagar/Donar</a>
+                <a href="{{ prefix }}sponsor/">Patrocina</a>
+              </nav>
+            </div>
+          </header>
+          <main>
+            {% block content %}{% endblock %}
+            <div class="cta">
+              ¿Te aportó valor? Apoya:
+              <a href="{{ site.paypal_link }}" target="_blank" rel="noopener">PayPal</a>
+              · IBAN: <code id="iban">{{ site.iban }}</code>
+              <button class="copy" onclick="navigator.clipboard.writeText('{{ site.iban }}')">Copiar</button>
+            </div>
+            <p class="muted" style="font-size:12px">{{ site.disclaimer }}</p>
+          </main>
+          <footer>
+            <div style="max-width:960px;margin:0 auto;">© {{ now().year }} · HYDRA-X OmniCapital · Auto-generado y auto-promocionado.</div>
+          </footer>
+          </body>
+          </html>
+          EOF
+
+          cat > templates/index.html << 'EOF'
+          {% set title = site.name %}
+          {% extends "base.html" %}
+          {% block content %}
+          <h1>{{ site.name }}</h1>
+          <p class="muted">Actualizado: {{ generated }}</p>
+          {% for lang, items in posts.items() %}
+            <h2>{{ "ES" if lang=="es" else "EN" }}</h2>
+            <div class="grid">
+              {% for p in items[:30] %}
+                <div>
+                  <a href="{{ prefix }}{{ p.url }}"><strong>{{ p.title }}</strong></a>
+                  <div class="muted" style="font-size:12px">{{ p.url }}</div>
+                </div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+          {% endblock %}
+          EOF
+
+          cat > templates/post.html << 'EOF'
+          {% set title = title %}
+          {% extends "base.html" %}
+          {% block content %}
+          <article itemscope itemtype="https://schema.org/Article">
+            <h1 itemprop="headline">{{ title }}</h1>
+            <div class="muted" style="font-size:14px">Publicado: {{ date }}</div>
+            <hr/>
+            <div itemprop="articleBody">{{ body | safe }}</div>
+            {% if affiliates and affiliates|length > 0 %}
+            <hr/>
+            <h3>Recursos recomendados</h3>
+            <ul>
+              {% for a in affiliates %}
+                <li><a href="{{ a.url }}" target="_blank" rel="sponsored noopener">{{ a.name }}</a></li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+          </article>
+          {% endblock %}
+          EOF
+
+          cat > templates/page.html << 'EOF'
+          {% set title = title %}
+          {% extends "base.html" %}
+          {% block content %}
+          <article>
+            <h1>{{ title }}</h1>
+            <div class="muted" style="font-size:14px">{{ subtitle }}</div>
+            <hr/>
+            <div>{{ body | safe }}</div>
+          </article>
+          {% endblock %}
+          EOF
+
+          # ---------------- pipeline ----------------
+          cat > pipeline.py << 'EOF'
+          import os, re, time, yaml, random, textwrap, requests, feedparser, hashlib, xmlrpc.client
+          from datetime import datetime
+          from pathlib import Path
+          from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+          ROOT = Path(__file__).parent
+          OUT = ROOT / "public"
+          STATIC = OUT / "static"
+          OGDIR = STATIC / "og"
+          TPL = Environment(loader=FileSystemLoader(str(ROOT / "templates")),
+                            autoescape=select_autoescape(["html","xml"]))
+
+          def load_cfg():
+              with open(ROOT/"config.yaml","r",encoding="utf-8") as f:
+                  return yaml.safe_load(f)
+
+          def slugify(s):
+              t = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
+              s = s.translate(t).lower()
+              s = re.sub(r"[^a-z0-9\\s-]", "", s)
+              s = re.sub(r"\\s+", "-", s).strip("-")
+              return s[:90] or f"post-{int(time.time())}"
+
+          def read_seeds(lang):
+              p = ROOT/"seeds"/f"{lang}.txt"
+              return [x.strip() for x in p.read_text(encoding="utf-8").splitlines() if x.strip()] if p.exists() else []
+
+          def read_feeds(lang):
+              fy = ROOT/"feeds.yaml"
+              if not fy.exists(): return []
+              data = yaml.safe_load(fy.read_text(encoding="utf-8"))
+              return data.get(lang, [])
+
+          def ensure_static():
+              OUT.mkdir(parents=True, exist_ok=True)
+              STATIC.mkdir(parents=True, exist_ok=True)
+              OGDIR.mkdir(parents=True, exist_ok=True)
+              css = """
+              :root{color-scheme:light dark}
+              body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#fff;color:#0f172a}
+              header,footer{padding:16px;background:#0f172a;color:#fff}
+              main{max-width:960px;margin:0 auto;padding:24px 16px}
+              a{color:#0ea5e9;text-decoration:none} a:hover{text-decoration:underline}
+              .cta{margin:24px 0;padding:12px 16px;border:1px solid #06b6d4;background:#ecfeff;border-radius:8px}
+              .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+              .muted{color:#64748b}
+              button.copy{margin-left:8px;padding:6px 10px;border:1px solid #94a3b8;background:#e2e8f0;border-radius:6px;cursor:pointer}
+              """
+              (STATIC/"styles.css").write_text(css, encoding="utf-8")
+              (OUT/"robots.txt").write_text("User-agent: *\\nAllow: /\\n", encoding="utf-8")
+
+          def make_og_image(title, slug):
+              try:
+                  from PIL import Image, ImageDraw, ImageFont
+                  W,H = (1200,630)
+                  img = Image.new("RGB",(W,H),(15,23,42))
+                  draw = ImageDraw.Draw(img)
+                  try:
+                      font = ImageFont.truetype("DejaVuSans-Bold.ttf", 56)
+                      small = ImageFont.truetype("DejaVuSans.ttf", 28)
+                  except:
+                      font = ImageFont.load_default()
+                      small = ImageFont.load_default()
+                  text = textwrap.fill(title, width=20)
+                  draw.text((60,180), text, fill=(255,255,255), font=font)
+                  draw.text((60,60), "HYDRA-X", fill=(94,234,212), font=small)
+                  p = OGDIR/f"{slug}.png"
+                  img.save(p, "PNG")
+                  return p.name
+              except Exception:
+                  return None
+
+          def llm_enabled(cfg):
+              env = cfg.get("llm",{}).get("enabled_env","")
+              return env and os.getenv(env,"0") == "1"
+
+          def gen_with_llm(topic, lang, cfg):
+              try:
+                  from huggingface_hub import hf_hub_download
+                  from llama_cpp import Llama
+                  model_path = ROOT/"models"/cfg["llm"]["filename"]
+                  if not model_path.exists():
+                      model_path.parent.mkdir(parents=True, exist_ok=True)
+                      mp = hf_hub_download(repo_id=cfg["llm"]["repo_id"], filename=cfg["llm"]["filename"], local_dir=str(model_path.parent))
+                      model_path = Path(mp)
+                  llm = Llama(model_path=str(model_path), n_threads=4, n_ctx=4096, verbose=False)
+                  sys_es = ("Eres un redactor experto que escribe artículos útiles, éticos y prácticos con título H1,"
+                            " subtítulos, listas, pasos accionables, 'Comprobación rápida' y 2–3 referencias.")
+                  sys_en = ("You are an expert writer producing useful, ethical, practical articles with H1 title,"
+                            " headings, lists, actionable steps, 'Quick check' and 2–3 references.")
+                  sys = sys_es if lang=="es" else sys_en
+                  prompt = f"{sys}\\nLenguaje/Language: {'español' if lang=='es' else 'english'}\\nTema/Topic: {topic}\\nLongitud: 700-1000 palabras."
+                  out = llm.create_chat_completion(messages=[{"role":"system","content":sys},{"role":"user","content":prompt}],
+                                                   temperature=0.7, max_tokens=900)
+                  return out["choices"][0]["message"]["content"].strip()
+              except Exception:
+                  return None
+
+          def gen_template(topic, lang):
+              if lang == "es":
+                  title = random.choice([
+                      f"Guía práctica: {topic.capitalize()}",
+                      f"{topic.capitalize()}: pasos, herramientas y errores comunes",
+                      f"Plantilla operativa para {topic}"
+                  ])
+                  secs = ["Resumen ejecutivo","Pasos accionables","Errores comunes","Comprobación rápida","Fuentes útiles"]
+                  steps = ["Define objetivo y métrica.","Prueba 48–72h.","Automatiza lo repetible.","Analítica básica.","Itera semanalmente."]
+                  mistakes = ["Complejidad sin validar.","Depender de pago.","No capturar contactos.","Sin CTA claro.","Ignorar consentimiento."]
+                  facts = ["Un KPI por sprint.","Mejoras pequeñas frecuentes.","Compara con control."]
+                  refs = [("arXiv AI","https://arxiv.org/list/cs.AI/recent"),("Open Source Guides","https://opensource.guide/"),("MDN Web Docs","https://developer.mozilla.org/")]
+              else:
+                  title = random.choice([
+                      f"Practical guide: {topic.capitalize()}",
+                      f"{topic.capitalize()}: steps, tools and pitfalls",
+                      f"Operational template for {topic}"
+                  ])
+                  secs = ["Executive summary","Actionable steps","Common pitfalls","Quick check","Useful sources"]
+                  steps = ["Define a north-star.","48–72h smoke test.","Automate repetitive.","Basic analytics.","Iterate weekly."]
+                  mistakes = ["Complexity before validation.","Only paid traffic.","No contact capture.","No clear CTA.","Ignoring consent."]
+                  facts = ["One KPI per sprint.","Small frequent ships.","Use a control."]
+                  refs = [("arXiv AI","https://arxiv.org/list/cs.AI/recent"),("Open Source Guides","https://opensource.guide/"),("MDN Web Docs","https://developer.mozilla.org/")]
+              para = lambda tx: " ".join([
+                  (f"Este recurso destila lo esencial sobre {tx} en 2025." if lang=="es" else f"This guide distills the essentials of {tx} in 2025."),
+                  ("Prioriza acciones simples con impacto medible." if lang=="es" else "Prioritize simple moves with measurable impact."),
+                  ("Evita complejidad innecesaria." if lang=="es" else "Avoid unnecessary complexity.")
+              ])
+              body = f"""
+          <p>{para(topic)}</p>
+          <h2>{secs[0]}</h2>
+          <p>{para('')}</p>
+          <h2>{secs[1]}</h2>
+          <ol>{"".join([f"<li>{x}</li>" for x in steps])}</ol>
+          <h2>{secs[2]}</h2>
+          <ul>{"".join([f"<li>{x}</li>" for x in mistakes])}</ul>
+          <h2>{secs[3]}</h2>
+          <ul>{"".join([f"<li>{x}</li>" for x in facts])}</ul>
+          <h2>{secs[4]}</h2>
+          <ul>{"".join([f'<li><a href="{u}" target="_blank" rel="noopener">{n}</a></li>' for n,u in refs])}</ul>
+          """
+              return title, body
+
+          def generate_article(topic, lang, cfg):
+              text = gen_with_llm(topic, lang, cfg) if llm_enabled(cfg) else None
+              if text:
+                  lines = [l for l in text.splitlines() if l.strip()]
+                  title = re.sub(r"^[#\\s]+","", lines[0]) if lines else topic.title()
+                  body = "\\n".join(lines[1:]) if len(lines)>1 else text
+                  return title, body
+              return gen_template(topic, lang)
+
+          def fetch_headlines(lang, max_items=4):
+              urls = read_feeds(lang)
+              items = []
+              for u in urls:
+                  try:
+                      feed = feedparser.parse(u)
+                      take = max(1, max_items//len(urls) if len(urls) else max_items)
+                      for e in feed.entries[: take]:
+                          title = e.get("title","").strip()
+                          link = e.get("link","").strip()
+                          if title and link:
+                              src = re.sub(r"^https?://(www\\.)?","", link).split("/")[0]
+                              summary = (re.sub("<.*?>","", e.get("summary",""))[:200] + "…") if e.get("summary") else ""
+                              items.append({"title":title,"link":link,"src":src,"summary":summary})
+                  except Exception:
+                      continue
+              seen=set(); uniq=[]
+              for it in items:
+                  if it["link"] in seen: continue
+                  seen.add(it["link"]); uniq.append(it)
+              return uniq[:max_items]
+
+          def render_linkpost(item, lang):
+              if lang=="es":
+                  title = f"Tendencia: {item['title']}"
+                  body = f"<p><strong>Fuente:</strong> <a href='{item['link']}' target='_blank' rel='noopener'>{item['src']}</a></p>"
+                  if item["summary"]: body += f"<p class='muted'>{item['summary']}</p>"
+                  body += "<h2>Por qué importa</h2><ul><li>Relevancia inmediata.</li><li>Ángulo de negocio/aprendizaje.</li><li>Recursos enlazados.</li></ul>"
+              else:
+                  title = f"Trending: {item['title']}"
+                  body = f"<p><strong>Source:</strong> <a href='{item['link']}' target='_blank' rel='noopener'>{item['src']}</a></p>"
+                  if item["summary"]: body += f"<p class='muted'>{item['summary']}</p>"
+                  body += "<h2>Why it matters</h2><ul><li>Immediate relevance.</li><li>Business/learning angle.</li><li>Linked resources.</li></ul>"
+              return title, body
+
+          def write_post(lang, title, body, cfg):
+              date = datetime.utcnow().strftime("%Y-%m-%d")
+              slug = slugify(title)
+              post_dir = OUT/lang/slug
+              post_dir.mkdir(parents=True, exist_ok=True)
+              og_name = make_og_image(title, slug)
+              affiliates = yaml.safe_load((ROOT/"affiliates.yaml").read_text(encoding="utf-8")) if (ROOT/"affiliates.yaml").exists() else []
+              html = TPL.get_template("post.html").render(
+                  site=cfg["site"], title=title, body=body, date=date, lang=lang,
+                  prefix="../../", og_image=(f"../../static/og/{og_name}" if og_name else ""), affiliates=affiliates
+              )
+              (post_dir/"index.html").write_text(html, encoding="utf-8")
+              return f"{lang}/{slug}/", title, date
+
+          def collect_posts():
+              items = []
+              for lang_dir in OUT.glob("*"):
+                  if not lang_dir.is_dir() or lang_dir.name in ("static","pay","sponsor"): continue
+                  lang = lang_dir.name
+                  for idx in lang_dir.glob("*/index.html"):
+                      html = idx.read_text(encoding="utf-8")
+                      m = re.search(r"<h1>(.*?)</h1>", html)
+                      t = m.group(1) if m else idx.parent.name
+                      rel = f"{lang}/{idx.parent.name}/"
+                      items.append({"lang":lang,"url":rel,"title":t,"mtime":idx.stat().st_mtime})
+              items.sort(key=lambda x: x["mtime"], reverse=True)
+              by_lang = {}
+              for it in items:
+                  by_lang.setdefault(it["lang"], []).append(it)
+              return by_lang, items
+
+          def build_index(cfg):
+              by_lang, _ = collect_posts()
+              html = TPL.get_template("index.html").render(site=cfg["site"], posts=by_lang, generated=datetime.utcnow().isoformat()+"Z", prefix="./")
+              (OUT/"index.html").write_text(html, encoding="utf-8")
+
+          def build_sitemap(cfg, base_url):
+              _, items = collect_posts()
+              def loc(u): return (base_url + "/" + u) if base_url else ("/"+u)
+              urls = [f"<url><loc>{loc(it['url'])}</loc></url>" for it in items]
+              sm = f'<?xml version="1.0" encoding="UTF-8"?>\\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\\n' + "\\n".join(urls) + "\\n</urlset>"
+              (OUT/"sitemap.xml").write_text(sm, encoding="utf-8")
+              if base_url:
+                  (OUT/"robots.txt").write_text(f"User-agent: *\\nAllow: /\\nSitemap: {base_url}/sitemap.xml\\n", encoding="utf-8")
+
+          def build_feed(cfg, base_url):
+              _, items = collect_posts()
+              items = items[:40]
+              now = datetime.utcnow().isoformat()+"Z"
+              feed = [f'<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>{cfg["site"]["name"]}</title><link>{base_url}</link><description>Feed de {cfg["site"]["name"]}</description><lastBuildDate>{now}</lastBuildDate>']
+              for it in items:
+                  link = (base_url + "/" + it["url"]) if base_url else ("/"+it["url"])
+                  feed.append(f"<item><title><![CDATA[{it['title']}]]></title><link>{link}</link><guid>{link}</guid></item>")
+              feed.append("</channel></rss>")
+              (OUT/"feed.xml").write_text("".join(feed), encoding="utf-8")
+
+          # ---------------- autopromoción ----------------
+          def indexnow_key(base_url):
+              repo = os.getenv("GITHUB_REPOSITORY","hydra-x")
+              key = hashlib.sha256(repo.encode()).hexdigest()[:32]
+              (OUT/f"{key}.txt").write_text(key, encoding="utf-8")
+              return key, f"{base_url}/{key}.txt" if base_url else f"/{key}.txt"
+
+          def ping_indexnow(base_url, urls):
+              try:
+                  if not base_url or not urls: return
+                  key, keyloc = indexnow_key(base_url)
+                  host = re.sub(r"^https?://","", base_url).split("/")[0]
+                  payload = {"host": host, "key": key, "keyLocation": keyloc, "urlList": [f"{base_url}/{u}" for u in urls]}
+                  for ep in ["https://www.bing.com/indexnow", "https://yandex.com/indexnow", "https://api.indexnow.org/indexnow"]:
+                      try:
+                          requests.post(ep, json=payload, timeout=15)
+                      except Exception:
+                          pass
+              except Exception:
+                  pass
+
+          def ping_pingomatic(base_url, feed_url):
+              try:
+                  if not base_url: return
+                  blogname = "HYDRA-X OmniCapital"
+                  server = xmlrpc.client.ServerProxy("http://rpc.pingomatic.com/")
+                  try:
+                      server.weblogUpdates.extendedPing(blogname, base_url, feed_url)
+                  except Exception:
+                      try:
+                          server.weblogUpdates.ping(blogname, base_url)
+                      except Exception:
+                          pass
+                  try:
+                      server2 = xmlrpc.client.ServerProxy("http://rpc.twingly.com/")
+                      server2.weblogUpdates.ping(blogname, base_url)
+                  except Exception:
+                      pass
+                  try:
+                      requests.get("https://ping.blo.gs/", params={"name": blogname, "url": base_url}, timeout=10)
+                  except Exception:
+                      pass
+              except Exception:
+                  pass
+
+          def ping_websub(feed_url):
+              try:
+                  if not feed_url: return
+                  requests.post("https://pubsubhubbub.appspot.com/", data={"hub.mode":"publish","hub.url":feed_url}, timeout=10)
+              except Exception:
+                  pass
+
+          def build_pages(cfg):
+              amounts = cfg.get("monetization",{}).get("amounts",[5,15,49,99])
+              body_es = "<p>Elige un importe y paga al instante con PayPal:</p><ul>" + "".join([f"<li><a href='{cfg['site']['paypal_link']}/{a}' target='_blank' rel='noopener'>Pagar {a} €</a></li>" for a in amounts]) + "</ul>"
+              body_es += f"<p>IBAN: <code>{cfg['site']['iban']}</code> (transferencia bancaria)</p>"
+              html = TPL.get_template("page.html").render(site=cfg["site"], title="Pagar/Donar", subtitle="Apoya y acelera el proyecto", body=body_es, prefix="../")
+              (OUT/"pay").mkdir(parents=True, exist_ok=True)
+              (OUT/"pay"/"index.html").write_text(html, encoding="utf-8")
+              body_sp = "<p>Patrocina artículos o la portada. Tarifas de lanzamiento:</p><ul><li>Post patrocinado: 49 €</li><li>Semana en portada: 149 €</li></ul><p>Paga vía PayPal y envía tu material en el texto del pago.</p>"
+              html2 = TPL.get_template("page.html").render(site=cfg["site"], title="Patrocina", subtitle="Plazas limitadas · Early supporters", body=body_sp, prefix="../")
+              (OUT/"sponsor").mkdir(parents=True, exist_ok=True)
+              (OUT/"sponsor"/"index.html").write_text(html2, encoding="utf-8")
+
+          def main():
+              cfg = load_cfg()
+              base = (os.getenv("SITE_BASE_URL","") or cfg["site"].get("base_url","")).strip()
+              ensure_static()
+              created = []
+
+              # Evergreen
+              for lang in cfg["site"]["languages"]:
+                  seeds = read_seeds(lang)
+                  k = min(cfg["site"].get("posts_per_run",6), len(seeds))
+                  picks = random.sample(seeds, k=k) if seeds else []
+                  for t in picks:
+                      title, body = generate_article(t, lang, cfg)
+                      url, ttl, _ = write_post(lang, title, body, cfg)
+                      created.append((lang, url, ttl))
+
+              # Tendencias
+              for lang in cfg["site"]["languages"]:
+                  for item in fetch_headlines(lang, max_items=4):
+                      title, body = render_linkpost(item, lang)
+                      url, ttl, _ = write_post(lang, title, body, cfg)
+                      created.append((lang, url, ttl))
+
+              build_pages(cfg)
+              build_index(cfg)
+              build_sitemap(cfg, base)
+              build_feed(cfg, base)
+
+              # Autopromoción
+              new_urls = [u for _,u,_ in created]
+              ping_indexnow(base, new_urls)
+              ping_pingomatic(base, f"{base}/feed.xml")
+              ping_websub(f"{base}/feed.xml")
+
+              print(f"Generated {len(created)} posts at {datetime.utcnow().isoformat()}Z, promoted {len(new_urls)} URLs")
+          if __name__ == "__main__":
+              main()
+          EOF
+
+          # ---------------- workflow build/deploy ----------------
+          cat > .github/workflows/build.yml << 'EOF'
+          name: HYDRA-X OmniCapital Autopilot
+          on:
+            schedule:
+              - cron: "0 0,6,12,18 * * *"   # 4 veces al día (UTC)
+            workflow_dispatch:
+            push:
+              branches: [ main ]
+          permissions:
+            contents: read
+            pages: write
+            id-token: write
+          concurrency:
+            group: "pages"
+            cancel-in-progress: false
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: "3.11"
+                - name: Install deps
+                  run: pip install jinja2 pyyaml requests pillow feedparser
+                - name: Optional LLM deps
+                  if: env.LLM_ENABLED == '1'
+                  run: pip install huggingface_hub llama-cpp-python
+                  env:
+                    LLM_ENABLED: ${{ secrets.LLM_ENABLED }}
+                - name: Build site
+                  env:
+                    TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+                    TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+                    LLM_ENABLED: ${{ secrets.LLM_ENABLED }}
+                    SITE_BASE_URL: ${{ secrets.SITE_BASE_URL }}
+                  run: python pipeline.py
+                - name: Setup Pages
+                  uses: actions/configure-pages@v4
+                - name: Upload artifact
+                  uses: actions/upload-pages-artifact@v3
+                  with:
+                    path: public
+            deploy:
+              runs-on: ubuntu-latest
+              needs: build
+              environment:
+                name: github-pages
+                url: ${{ steps.deployment.outputs.page_url }}
+              steps:
+                - id: deployment
+                  uses: actions/deploy-pages@v4
+          EOF
+
+          # ---------------- estilos mínimos y robots ----------------
+          cat > public/static/styles.css << 'EOF'
+          :root{color-scheme:light dark}
+          body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:#0f172a;background:#fff}
+          header,footer{padding:16px;background:#0f172a;color:#fff}
+          main{max-width:960px;margin:0 auto;padding:24px 16px}
+          a{color:#0ea5e9;text-decoration:none} a:hover{text-decoration:underline}
+          .cta{margin:24px 0;padding:12px 16px;border:1px solid #06b6d4;background:#ecfeff;border-radius:8px}
+          .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+          .muted{color:#64748b}
+          button.copy{margin-left:8px;padding:6px 10px;border:1px solid #94a3b8;background:#e2e8f0;border-radius:6px;cursor:pointer}
+          EOF
+          echo -e "User-agent: *\nAllow: /\n" > public/robots.txt
+
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --quiet || git commit -m "Scaffold HYDRA-X OmniCapital Autopilot"
+          git push
