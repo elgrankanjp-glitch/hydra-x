@@ -1,0 +1,255 @@
+name: HYDRA-X Instant + Autopilot
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/instant_autopilot.yml'
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 * * * *"   # publica y se autopromociona cada hora
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build site (instant + autopilot sin dependencias)
+        run: |
+          set -e
+          python3 - << 'PY'
+          import os, re, json, random, hashlib, urllib.request, urllib.parse, xmlrpc.client
+          from datetime import datetime
+          from pathlib import Path
+
+          # Base y paths
+          owner_repo = os.getenv("GITHUB_REPOSITORY","owner/repo")
+          owner, repo = (owner_repo.split("/") + ["",""])[:2]
+          base = f"https://{owner}.github.io/{repo}"
+          ROOT = Path("public"); ROOT.mkdir(parents=True, exist_ok=True)
+          (ROOT/"static").mkdir(parents=True, exist_ok=True)
+
+          # Config rápida
+          PAYPAL = "https://paypal.me/nostrodamus777"
+          IBAN = "ES15830001149095288889"
+          POSTS_PER_LANG = 24   # volúmen por hora (48 posts/hora EN+ES)
+          AMOUNTS = [5,15,49,99]
+
+          # CSS
+          css = """:root{color-scheme:light dark}*{box-sizing:border-box}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;color:#0f172a;background:#fff}header,footer{padding:16px;background:#0f172a;color:#fff}.wrap{max-width:980px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:12px}nav a{color:#fff;text-decoration:none;margin-left:12px}nav a:hover{text-decoration:underline}main{max-width:980px;margin:0 auto;padding:24px 16px}.cta{margin:24px 0;padding:12px 16px;border:1px solid #06b6d4;background:#ecfeff;border-radius:8px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.muted{color:#64748b}.btn{background:#0ea5e9;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;margin-right:8px;display:inline-block}.btn.ghost{background:#e2e8f0;color:#0f172a}.copy{margin-left:8px;padding:6px 10px;border:1px solid #94a3b8;background:#e2e8f0;border-radius:6px;cursor:pointer}code{background:#f1f5f9;padding:2px 6px;border-radius:6px}article h1{margin-bottom:0}hr{border:none;border-top:1px solid #e2e8f0;margin:16px 0}"""
+          (ROOT/"static"/"styles.css").write_text(css, encoding="utf-8")
+
+          # Seeds
+          seeds_es = [
+            "automatización con ia para restaurantes","micro saas de facturación","prompts para productividad personal",
+            "embudos de ventas sin anuncios","seo programático para nichos","chatbots de atención al cliente open source",
+            "monetización con afiliación 2025","plantillas de captación de leads b2b","automatizar procesos con n8n",
+            "landing pages de alta conversión","productos digitales de bajo esfuerzo","newsletter de curación de contenidos",
+            "modelos de negocio sin inventario","cómo crear datasets útiles","licenciamiento de contenido embebible",
+            "ideas de micro saas 2025","automatización para ecommerce","agentes autónomos para pymes",
+            "marketing de contenidos con ia","estrategias de referidos éticas","integraciones con zapier y make",
+            "auditoría de analytics para pymes","lead magnets efectivos","copywriting con ia",
+            "gestión de reputación online","scrapers éticos y legales","automatización de email marketing",
+            "servicio técnico con bots","venta consultiva con ia","apertura de nuevos nichos con seo"
+          ]
+          seeds_en = [
+            "ai automation for small businesses","micro saas billing ideas","best prompts for productivity",
+            "zero ad growth loops","programmatic seo for long tail","open source customer support chatbots",
+            "affiliate monetization in 2025","b2b lead capture playbooks","process automation with n8n",
+            "high converting landing pages","low effort digital products","newsletter curation strategy",
+            "inventory free business models","how to create useful datasets","embeddable content licensing",
+            "micro saas ideas 2025","automation for ecommerce","autonomous agents for smbs",
+            "content marketing with ai","ethical referral strategies","zapier and make integrations",
+            "analytics audits for smbs","effective lead magnets","ai copywriting",
+            "online reputation management","ethical scrapers and compliance","email marketing automation",
+            "support with chatbots","consultative selling with ai","new niches with seo"
+          ]
+
+          # Helpers
+          def slugify(s):
+            t = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ","aeiouunAEIOUUN")
+            s = s.translate(t).lower()
+            s = re.sub(r"[^a-z0-9\\s-]","",s)
+            s = re.sub(r"\\s+","-",s).strip("-")
+            return s[:90] or f"post-{int(datetime.utcnow().timestamp())}"
+
+          def base_html(title, body, prefix="./"):
+            return f"""<!doctype html><html lang="es"><head>
+            <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+            <title>{title}</title><link rel="stylesheet" href="{prefix}static/styles.css"/>
+            <meta name="robots" content="index,follow"/>
+            <link rel="alternate" type="application/rss+xml" href="{prefix}feed.xml"/>
+            <link rel="sitemap" type="application/xml" href="{prefix}sitemap.xml"/>
+            </head><body>
+            <header><div class="wrap"><strong>HYDRA‑X</strong>
+              <nav><a href="{prefix}">Inicio</a><a href="{prefix}pay/">Pagar/Donar</a><a href="{prefix}sponsor/">Patrocina</a></nav>
+            </div></header>
+            <main>{body}
+              <div class="cta">¿Te aportó valor? <a class="btn" href="{PAYPAL}" target="_blank" rel="noopener">PayPal</a>
+              IBAN: <code id="iban">{IBAN}</code>
+              <button class="copy" onclick="navigator.clipboard.writeText('{IBAN}')">Copiar</button></div>
+              <p class="muted" style="font-size:12px">Contenido informativo. Verifica datos clave. Puede haber enlaces de afiliado.</p>
+            </main>
+            <footer><div class="wrap">© {datetime.utcnow().year} · HYDRA‑X · Operando 24/7</div></footer>
+            </body></html>"""
+
+          def gen_article(lang, topic):
+            if lang=="es":
+              title = random.choice([f"Guía práctica: {topic.capitalize()}",
+                                     f"{topic.capitalize()}: pasos, herramientas y errores comunes",
+                                     f"Plantilla operativa para {topic}"])
+              steps = ["Define objetivo y métrica.","Prueba 48–72h.","Automatiza lo repetible.","Analítica básica.","Itera semanalmente."]
+              mistakes = ["Complejidad sin validar.","Depender de pago.","No capturar contactos.","Sin CTA claro.","Ignorar consentimiento."]
+              para1 = f"Este recurso destila lo esencial sobre {topic} en 2025. Prioriza acciones simples con impacto medible. Evita complejidad innecesaria."
+              para2 = "Documenta y mide cada cambio. Duplica lo que funciona, elimina lo que no."
+              body = f"<p>{para1}</p><h2>Resumen ejecutivo</h2><p>{para2}</p><h2>Pasos accionables</h2><ol>{''.join([f'<li>{x}</li>' for x in steps])}</ol><h2>Errores comunes</h2><ul>{''.join([f'<li>{x}</li>' for x in mistakes])}</ul><h2>Fuentes</h2><ul><li><a target='_blank' rel='noopener' href='https://arxiv.org/list/cs.AI/recent'>arXiv AI</a></li><li><a target='_blank' rel='noopener' href='https://opensource.guide/'>Open Source Guides</a></li></ul>"
+            else:
+              title = random.choice([f"Practical guide: {topic.capitalize()}",
+                                     f"{topic.capitalize()}: steps, tools and pitfalls",
+                                     f"Operational template for {topic}"])
+              steps = ["Define a north-star.","48–72h smoke test.","Automate repetitive work.","Basic analytics.","Iterate weekly."]
+              mistakes = ["Complexity before validation.","Only paid traffic.","No contact capture.","No clear CTA.","Ignoring consent."]
+              para1 = f"This guide distills the essentials of {topic} for 2025. Prioritize simple moves with measurable impact. Avoid unnecessary complexity."
+              para2 = "Document and measure every change. Double down on winners and drop losers."
+              body = f"<p>{para1}</p><h2>Executive summary</h2><p>{para2}</p><h2>Actionable steps</h2><ol>{''.join([f'<li>{x}</li>' for x in steps])}</ol><h2>Common pitfalls</h2><ul>{''.join([f'<li>{x}</li>' for x in mistakes])}</ul><h2>Sources</h2><ul><li><a target='_blank' rel='noopener' href='https://arxiv.org/list/cs.AI/recent'>arXiv AI</a></li><li><a target='_blank' rel='noopener' href='https://opensource.guide/'>Open Source Guides</a></li></ul>"
+            return title, body
+
+          def write_post(lang, title, body):
+            slug = slugify(title)
+            post_dir = ROOT/lang/slug
+            post_dir.mkdir(parents=True, exist_ok=True)
+            html = base_html(title, f"<article><h1>{title}</h1><div class='muted' style='font-size:14px'>Publicado: {datetime.utcnow().strftime('%Y-%m-%d')}</div><hr/>{body}</article>", prefix="../../")
+            (post_dir/"index.html").write_text(html, encoding="utf-8")
+            return f"{lang}/{slug}/", title
+
+          # Páginas fijas
+          def build_pay():
+            body = f"<h1>Pagar / Donar</h1><p>Elige un importe y paga al instante con PayPal.</p><p>" + " ".join([f"<a class='btn' href='{PAYPAL}/{a}' target='_blank' rel='noopener'>Pagar {a} €</a>" for a in AMOUNTS]) + "</p><h2>Transferencia bancaria</h2><p>IBAN: <code>{IBAN}</code> <button class='copy' onclick=\"navigator.clipboard.writeText('{IBAN}')\">Copiar</button></p>"
+            (ROOT/"pay").mkdir(parents=True, exist_ok=True)
+            (ROOT/"pay"/"index.html").write_text(base_html("Pagar/Donar · HYDRA‑X", body, prefix="../"), encoding="utf-8")
+
+          def build_sponsor():
+            body = "<h1>Patrocina</h1><ul><li>Post patrocinado: 49 €</li><li>Semana en portada: 149 €</li></ul><p>Paga vía PayPal y añade tu material en el texto del pago.</p>"
+            (ROOT/"sponsor").mkdir(parents=True, exist_ok=True)
+            (ROOT/"sponsor"/"index.html").write_text(base_html("Patrocina · HYDRA‑X", body, prefix="../"), encoding="utf-8")
+
+          def collect_posts():
+            items=[]
+            for lang_dir in ROOT.glob("*"):
+              if not lang_dir.is_dir() or lang_dir.name in ("static","pay","sponsor"): continue
+              lang = lang_dir.name
+              for idx in lang_dir.glob("*/index.html"):
+                html = idx.read_text(encoding="utf-8")
+                m = re.search(r"<h1>(.*?)</h1>", html)
+                title = m.group(1) if m else idx.parent.name
+                url = f"{lang}/{idx.parent.name}/"
+                items.append({"lang":lang,"url":url,"title":title,"mtime":idx.stat().st_mtime})
+            items.sort(key=lambda x: x["mtime"], reverse=True)
+            return items
+
+          def build_index():
+            posts = collect_posts()
+            by_lang = {}
+            for it in posts:
+              by_lang.setdefault(it["lang"], []).append(it)
+            blocks=[]
+            for lang, items in by_lang.items():
+              h = "ES" if lang=="es" else "EN"
+              grid = "".join([f"<div><a href='./{p['url']}'><strong>{p['title']}</strong></a><div class='muted' style='font-size:12px'>{p['url']}</div></div>" for p in items[:30]])
+              blocks.append(f"<h2>{h}</h2><div class='grid'>{grid}</div>")
+            body = f"<h1>HYDRA‑X</h1><p class='muted'>Actualizado: {datetime.utcnow().isoformat()}Z</p>" + "".join(blocks)
+            (ROOT/"index.html").write_text(base_html("HYDRA‑X | En marcha", body, prefix="./"), encoding="utf-8")
+
+          def build_sitemap(base_url):
+            posts = collect_posts()
+            def loc(u): return (base_url + "/" + u) if base_url else ("/"+u)
+            urls = [f"<url><loc>{loc(p['url'])}</loc></url>" for p in posts]
+            urls += [f"<url><loc>{base_url}/</loc></url>", f"<url><loc>{base_url}/pay/</loc></url>", f"<url><loc>{base_url}/sponsor/</loc></url>"]
+            xml = "<?xml version='1.0' encoding='UTF-8'?>\n<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>\n" + "\n".join(urls) + "\n</urlset>"
+            (ROOT/"sitemap.xml").write_text(xml, encoding="utf-8")
+            (ROOT/"robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {base_url}/sitemap.xml\n", encoding="utf-8")
+
+          def build_feed(base_url):
+            posts = collect_posts()[:40]
+            now = datetime.utcnow().isoformat()+"Z"
+            items=[]
+            for p in posts:
+              link = (base_url + "/" + p["url"]) if base_url else ("/"+p["url"])
+              items.append(f"<item><title><![CDATA[{p['title']}]]></title><link>{link}</link><guid>{link}</guid></item>")
+            rss = f"<?xml version='1.0' encoding='UTF-8'?><rss version='2.0'><channel><title>HYDRA‑X</title><link>{base_url}</link><description>Actualizaciones HYDRA‑X</description><lastBuildDate>{now}</lastBuildDate>{''.join(items)}</channel></rss>"
+            (ROOT/"feed.xml").write_text(rss, encoding="utf-8")
+
+          def ping_indexnow(base_url, new_urls):
+            if not base_url or not new_urls: return
+            key = hashlib.sha256(owner_repo.encode()).hexdigest()[:32]
+            (ROOT/f"{key}.txt").write_text(key, encoding="utf-8")
+            host = re.sub(r"^https?://","", base_url).split("/")[0]
+            payload = json.dumps({
+              "host": host, "key": key, "keyLocation": f"{base_url}/{key}.txt",
+              "urlList": [f"{base_url}/{u}" for u in new_urls]
+            }).encode()
+            for ep in ["https://www.bing.com/indexnow","https://api.indexnow.org/indexnow"]:
+              try:
+                req = urllib.request.Request(ep, data=payload, headers={"Content-Type":"application/json"})
+                urllib.request.urlopen(req, timeout=15).read()
+              except Exception:
+                pass
+
+          def ping_pingomatic(base_url, feed_url):
+            if not base_url: return
+            try:
+              server = xmlrpc.client.ServerProxy("http://rpc.pingomatic.com/")
+              try:
+                server.weblogUpdates.extendedPing("HYDRA‑X", base_url, feed_url)
+              except Exception:
+                server.weblogUpdates.ping("HYDRA‑X", base_url)
+            except Exception:
+              pass
+
+          # Generación
+          (ROOT/".nojekyll").write_text("", encoding="utf-8")
+          # Páginas fijas primero
+          build_pay(); build_sponsor()
+
+          created = []
+          for lang, seeds in (("es",seeds_es),("en",seeds_en)):
+            lang_dir = ROOT/lang; lang_dir.mkdir(parents=True, exist_ok=True)
+            picks = random.sample(seeds, k=min(POSTS_PER_LANG, len(seeds)))
+            for topic in picks:
+              title, body = gen_article(lang, topic)
+              url, ttl = write_post(lang, title, body)
+              created.append(url)
+
+          # Índices y SEO
+          build_index()
+          build_sitemap(base)
+          build_feed(base)
+
+          # Pings
+          ping_indexnow(base, created)
+          try: ping_pingomatic(base, f"{base}/feed.xml")
+          except Exception: pass
+
+          print(f"OK :: Generated {len(created)} posts · Base {base}")
+          PY
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
